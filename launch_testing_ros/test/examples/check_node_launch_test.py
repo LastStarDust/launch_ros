@@ -25,6 +25,7 @@ from launch_testing.io_handler import ActiveIoHandler
 import launch_testing.markers
 import pytest
 import rclpy
+from rclpy.node import Node
 
 
 @pytest.mark.launch_test
@@ -49,23 +50,26 @@ def generate_test_description():
 
 class TestFixture(unittest.TestCase):
 
-    def setUp(self):
-        rclpy.init()
-        self.node = rclpy.create_node('test_node')
-
-    def tearDown(self):
-        self.node.destroy_node()
-        rclpy.shutdown()
-
     def test_node_start(self, proc_output: ActiveIoHandler):
-        found = False
-        print('Waiting for node...')
-        # demo_node_1 won't start for at least 5 seconds after this test
-        # is launched, so we wait for a total of up to 20 seconds for it
-        # to appear.
+        rclpy.init()
+        try:
+            node = MakeTestNode('test_node')
+            assert node.wait_for_node('demo_node_1', 8.0), 'Node not found !'
+        finally:
+            rclpy.shutdown()
+
+
+class MakeTestNode(Node):
+
+    def __init__(self, name: str = 'test_node'):
+        super().__init__(name)
+
+    def wait_for_node(self, node_name: str, timeout: float = 8.0):
         start = time.time()
-        while time.time() - start < 20.0 and not found:
-            found = 'demo_node_1' in self.node.get_node_names()
+        flag = False
+        print('Waiting for node...')
+        while time.time() - start < timeout and not flag:
+            flag = node_name in self.get_node_names()
             time.sleep(0.1)
 
-        assert found, 'Node not found!'
+        return flag

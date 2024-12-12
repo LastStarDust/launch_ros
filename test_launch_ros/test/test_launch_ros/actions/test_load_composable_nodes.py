@@ -44,17 +44,30 @@ TEST_NODE_NAME = 'test_load_composable_nodes_node'
 
 class MockComponentContainer(rclpy.node.Node):
 
-    def __init__(self, context):
+    def __init__(self):
         # List of LoadNode requests received
         self.requests = []
 
-        super().__init__(TEST_CONTAINER_NAME, context=context)
+        self._context = rclpy.context.Context()
+        rclpy.init(context=self._context)
+
+        super().__init__(TEST_CONTAINER_NAME, context=self._context)
 
         self.load_node_service = self.create_service(
             LoadNode,
             '~/_container/load_node',
             self.load_node_callback
         )
+
+        self._executor = rclpy.executors.SingleThreadedExecutor(context=self._context)
+
+        # Start spinning in a thread
+        self._thread = threading.Thread(
+            target=rclpy.spin,
+            args=(self, self._executor),
+            daemon=True
+        )
+        self._thread.start()
 
     def load_node_callback(self, request, response):
         self.requests.append(request)
@@ -65,6 +78,12 @@ class MockComponentContainer(rclpy.node.Node):
             response.full_node_name = f'{request.node_namespace}/{request.node_name}'
         response.unique_id = len(self.requests)
         return response
+
+    def shutdown(self):
+        self._executor.shutdown()
+        rclpy.shutdown(context=self._context)
+        self.destroy_node()
+        self._thread.join()
 
 
 def _assert_launch_no_errors(actions):
@@ -103,20 +122,9 @@ def _load_composable_node(
 
 @pytest.fixture
 def mock_component_container():
-    context = rclpy.context.Context()
-    with rclpy.init(context=context):
-        executor = rclpy.executors.SingleThreadedExecutor(context=context)
-
-        container = MockComponentContainer(context)
-        executor.add_node(container)
-
-        # Start spinning in a thread
-        thread = threading.Thread(target=lambda executor: executor.spin(), args=(executor,))
-        thread.start()
-        yield container
-        executor.remove_node(container)
-        executor.shutdown()
-        thread.join()
+    container = MockComponentContainer()
+    yield container
+    container.shutdown()
 
 
 def test_load_node(mock_component_container):

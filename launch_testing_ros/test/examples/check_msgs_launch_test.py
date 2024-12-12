@@ -27,6 +27,7 @@ from launch_testing.io_handler import ActiveIoHandler
 import launch_testing.markers
 import pytest
 import rclpy
+from rclpy.node import Node
 from std_msgs.msg import String
 
 
@@ -49,39 +50,35 @@ def generate_test_description():
 
 class TestFixture(unittest.TestCase):
 
-    def subscription_callback(self, data: String):
-        self.msg_event_object.set()
-
-    def spin(self):
-        try:
-            while rclpy.ok() and not self.spinning.is_set():
-                rclpy.spin_once(self.node, timeout_sec=0.1)
-        finally:
-            return
-
-    def setUp(self):
+    def test_check_if_msgs_published(self, proc_output: ActiveIoHandler):
         rclpy.init()
-        self.node = rclpy.create_node('test_node')
-        self.spinning = Event()
+        try:
+            node = MakeTestNode('test_node')
+            node.start_subscriber()
+            msgs_received_flag = node.msg_event_object.wait(timeout=5.0)
+            assert msgs_received_flag, 'Did not receive msgs !'
+        finally:
+            rclpy.shutdown()
+
+
+class MakeTestNode(Node):
+
+    def __init__(self, name: str = 'test_node'):
+        super().__init__(name)
         self.msg_event_object = Event()
-        self.subscription = self.node.create_subscription(
+
+    def start_subscriber(self):
+        # Create a subscriber
+        self.subscription = self.create_subscription(
             String,
             'chatter',
-            self.subscription_callback,
+            self.subscriber_callback,
             10
         )
 
         # Add a spin thread
-        self.ros_spin_thread = Thread(target=self.spin)
+        self.ros_spin_thread = Thread(target=lambda node: rclpy.spin(node), args=(self,))
         self.ros_spin_thread.start()
 
-    def tearDown(self):
-        self.spinning.set()
-        self.ros_spin_thread.join()
-        self.node.destroy_subscription(self.subscription)
-        self.node.destroy_node()
-        rclpy.shutdown()
-
-    def test_check_if_msgs_published(self, proc_output: ActiveIoHandler):
-        msgs_received_flag = self.msg_event_object.wait(timeout=15.0)
-        assert msgs_received_flag, 'Did not receive msgs !'
+    def subscriber_callback(self, data: String):
+        self.msg_event_object.set()

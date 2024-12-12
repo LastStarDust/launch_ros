@@ -151,9 +151,10 @@ def test_shutdown_preempts_timers():
 
 @pytest.fixture
 def rclpy_node():
-    with rclpy.init():
-        node = rclpy.create_node('test_ros_timer_action_node')
-        yield node
+    rclpy.init()
+    node = rclpy.create_node('test_ros_timer_action_node')
+    yield node
+    rclpy.shutdown()
 
 
 def test_timer_uses_sim_time(rclpy_node):
