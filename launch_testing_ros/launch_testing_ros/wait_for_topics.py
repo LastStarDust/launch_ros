@@ -71,6 +71,7 @@ class WaitForTopics:
                  callback=None, node_namespace=None):
         self.topic_tuples = topic_tuples
         self.timeout = timeout
+        self.messages_received_buffer_length = messages_received_buffer_length
         self.callback = callback
         self.node_namespace = node_namespace
         if self.callback is not None and not callable(self.callback):
